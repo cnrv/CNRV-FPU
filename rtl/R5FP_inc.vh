@@ -4,21 +4,23 @@
 
 //000 RNE Round to Nearest, ties to Even
 //001 RTZ Round towards Zero
-//010 RDN Round Down (towards −1)
-//011 RUP Round Up (towards +1)
+//010 RDN Round Down (towards -Inf)
+//011 RUP Round Up (towards +Inf)
 //100 RMM Round to Nearest, ties to Max Magnitude
-
 
 `define RND_NEAREST_EVEN 3'b000
 `define RND_TO_ZERO 3'b001
-`define RND_UP 3'b010
-`define RND_DOWN 3'b011
+`define RND_DOWN 3'b010
+`define RND_UP 3'b011
 `define RND_NEAREST_UP 3'b100
 `define RND_FROM_ZERO 3'b101
 
+function automatic [2:0] to_snps_rnd(logic [2:0] i);
+	if(i==3'b010) return 3'b011;
+	else if(i==3'b011) return 3'b010;
+	else return i;
+endfunction
 
-`define IS_1SCMPL 6
-`define TailSameAsLSB 5
 `define SIGN 4
 `define STICKY 3
 `define IS_NAN 2
@@ -33,6 +35,18 @@
 `define Z_INEXACT 5
 `define Z_HUGE_INT 6
 `define Z_DIV_BY_0 7
+
+parameter   softfloat_flag_inexact   =  1; //0
+parameter   softfloat_flag_underflow =  2; //1
+parameter   softfloat_flag_overflow  =  4; //2
+parameter   softfloat_flag_infinite  =  8; //3
+parameter   softfloat_flag_invalid   = 16; //4
+
+/* verilator lint_off UNUSED */
+function automatic [4:0] to_tf_flags(logic [7:0] status);
+	return {status[`Z_INVALID],1'b0,status[`Z_HUGE],status[`Z_TINY],status[`Z_INEXACT]};
+endfunction
+/* verilator lint_on UNUSED */
 
 `define EXP_DENORMAL_MIN(e,s) ((1<<((e)-1))+1-(s))
 `define EXP_DENORMAL_MAX(e) (1<<((e)-1))
@@ -68,7 +82,7 @@ begin
         `RND_FROM_ZERO: begin
             round = round_bit|sticky;
         end
-        default: $display("Unkown rounding mode!\n");
+        default: $display("Unkown rounding mode: %b!\n",rnd_i);
         endcase
     end
 	return round;
