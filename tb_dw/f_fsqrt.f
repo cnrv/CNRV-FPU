@@ -1,6 +1,7 @@
 -cc 
 -Wall 
 -Wno-DECLFILENAME
+-DFORCE_DW_NAN_BEHAVIOR
 -DFORCE_DW_SQRT_BEHAVIOR
 --top-module tb_fsqrt
 --exe

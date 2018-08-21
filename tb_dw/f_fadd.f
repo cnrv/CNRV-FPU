@@ -1,6 +1,7 @@
 -cc 
 -Wall 
 -Wno-DECLFILENAME
+-DFORCE_DW_NAN_BEHAVIOR
 --top-module tb_fp_add
 --exe
 --assert

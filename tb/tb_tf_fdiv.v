@@ -88,6 +88,9 @@ R5FP_postproc #(
 		.aSig({1'b0,xSig}),
 		.rnd(rnd),
 		.aSign(xMidStatus[`SIGN]),
+/* verilator lint_off PINCONNECTEMPTY */
+		.specialZRnd(),
+/* verilator lint_on PINCONNECTEMPTY */
 		.z(zx),
 		.zStatus(zStatus));
 
@@ -159,20 +162,22 @@ always @(negedge clk) begin
 		//special case for NaN
 		if((&z0Exp)==1&&(&zExp)==1&&z0Sig!=0&&zSig!=0) pass=1;
 
-		if(z0Exp!=0) s0[1]=1'b0; // fix an underflow bug of testfloat?
 		if(s0!=yS) pass=0;
+
 		if(pass) begin
 			//$display("Pass");
 		end
 		else begin
 			$display("Fail!! %d", $time);
-			$display("input: a b: %08h %08h",a,b);
+			$display("input: a b z: %08h %08h %08h",a,b,z0);
 			$display("input: a:%b-%b-%b b:%b-%b-%b",aSign,aExp,aSig,bSign,bExp,bSig);
 			$display("z0Sign:%b z0Sig:%b z0Exp:%b s0:%b",z0Sign,z0Sig,z0Exp,s0);
 			$display("zSign:%b  zSig :%b zExp :%b yS:%b %b",zSign,zSig, zExp, yS, status);
-			$display("zxSig:%b zxExp:%b",zxSig, zxExp);
+			$display("zxSig:%b zxExp:%b Quo:%b Rem:%b round:%b sticky:%b",
+				zxSig, zxExp, I.idiv_Quo, I.idiv_Rem, I.div.roundBit, I.div.stickyBit);
+			$display("Quo[2:0]<=4 :%b ", I.idiv_Quo[2:0]<=3'b100);
 			$display("use_fast_r :%b ", I.div.use_fast_r);
-			$finish();
+			//$finish();
 		end
 	end
 end

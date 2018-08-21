@@ -9,7 +9,7 @@ module R5FP_add #(
 	input [EXP_W+SIG_W:0] a, b,
 
 	output [EXP_W-1:0] zExp,
-	output [5-1:0] zStatus,
+	output [6-1:0] zStatus,
 	output [SIG_W+4-1:0] zSig,
 	output zSign);
 
@@ -41,11 +41,11 @@ module R5FP_add_inner #(
 	input [2:0] rnd,
 
 	output [EXP_W-1:0] zExp,
-	output [5-1:0] zStatus,
+	output [6-1:0] zStatus,
 	output [SIG_W+4-1:0] zSig,
 	output zSign);
 
-wire sign, isNaN, isINF, useA, useB, isZero0, signalNaN;
+wire sign, isNaN, isINF, useA, useB, isZero0, signalNaN, isInvalid;
 wire a_s;
 R5FP_add_special_cases #(
 	.EXP_W(EXP_W),
@@ -55,6 +55,7 @@ R5FP_add_special_cases #(
 	.rnd(rnd),
 	.a_e_all_one(a_e_all_one), .a_quiet_NaN(a_quiet_NaN), .b(b),
 	.sign(sign), .isNaN(isNaN), .signalNaN(signalNaN), 
+	.isInvalid(isInvalid),
 	.isINF(isINF), .useA(useA), .useB(useB), .isZero(isZero0));
 
 wire [2:0] GRT;
@@ -69,6 +70,7 @@ R5FP_add_core #(
 reg [4:0] zStatus;
 always @(*) begin
 	zStatus=0;
+	zStatus[`INVALID]=isInvalid;
 	zStatus[`IS_NAN]=isNaN;
 	zStatus[`IS_INF]=isINF;
 	zStatus[`IS_ZERO]=isZero0;
@@ -101,7 +103,7 @@ module R5FP_add_special_cases #(
 	input a_is_weak_Inf,
 	input [2:0] rnd,
 	input [EXP_W+SIG_W:0] b,
-	output  reg sign, isNaN, signalNaN, isINF, useA, useB, isZero);
+	output  reg sign, isNaN, signalNaN, isINF, useA, useB, isZero, isInvalid);
 
 localparam E_MAX=((1<<EXP_W)-1);
     
@@ -114,30 +116,33 @@ always@(*)   begin
 	sign=0;
 	isNaN=0;
 	isINF=0;
+	isInvalid=0;
 	useB=(a_e_all_zero && a_m_all_zero);
 	useA=(b_e==0 && b_m==0);
 	signalNaN=0;
 	isZero=useA&&useB;
-	//if a is NaN or b is NaN return NaN 
-	if ((a_e_all_one && !a_m_all_zero)) begin
-		isNaN = 1;
-		signalNaN=!a_quiet_NaN;
-	end
-	if ((b_e==E_MAX && b_m != 0)) begin
-		isNaN = 1;
-		signalNaN=!b_m[SIG_W-1];
-	end 
-	else if (a_e_all_one && b_e==E_MAX && a_s!=b_s) begin
-		//if a and b is +inf and -inf and a is weak, pick b
+	if (a_e_all_one && b_e==E_MAX && a_s!=b_s && a_m_all_zero && b_m==0) begin
+		//if a and b are +inf and -inf and a is weak, pick b
 		if(a_is_weak_Inf) begin
 			isINF = 1;
 			sign=b_s;
 		end
-		//if a and b is +inf and -inf, return NaN
+		//if a and b are +inf and -inf, return NaN
 		else begin
 			isNaN = 1;
 			signalNaN = 1;
+			isInvalid = 1;
 		end
+	end 
+	//if a is NaN return NaN 
+	else if ((a_e_all_one && !a_m_all_zero)) begin
+		isNaN = 1;
+		signalNaN=!a_quiet_NaN;
+	end
+	//if b is NaN return NaN 
+	else if ((b_e==E_MAX && b_m != 0)) begin
+		isNaN = 1;
+		signalNaN=!b_m[SIG_W-1];
 	end 
 	//if b is inf return inf
 	else if (b_e==E_MAX) begin
@@ -154,6 +159,7 @@ always@(*)   begin
 			sign=a_s;
 		end 
 	end 
+
 end
 endmodule
 
@@ -301,17 +307,18 @@ module R5FP_mul #(
 	input [EXP_W+SIG_W:0] a, b,
 
 	output [EXP_W-1:0] zExp,
-	output [5-1:0] zStatus,
+	output [6-1:0] zStatus,
 	output [SIG_W*2+2:0] zSig,
 	output toInf,
 	output zSign);
 
-wire sign, isNaN, signalNaN, isINF, isZero;
+wire sign, isNaN, signalNaN, isINF, isZero, isInvalid;
 R5FP_mul_special_cases #(
 	.EXP_W(EXP_W),
 	.SIG_W(SIG_W)) sp (
 	.a(a), .b(b),
 	.sign(sign), .isNaN(isNaN), .signalNaN(signalNaN), 
+	.isInvalid(isInvalid),
 	.isINF(isINF), .isZero(isZero));
 
 wire [EXP_W+SIG_W*2+1:0] z_tmp;
@@ -322,11 +329,12 @@ R5FP_mul_core #(
 	.SIG_W(SIG_W)) mul (
 	.a(a), .b(b), .z(z_tmp), 
 	.toInf(toInfPre));
-assign toInf=toInfPre&!isINF;
+assign toInf=toInfPre&&(!isINF)&&(!isNaN);
 
-reg [4:0] zStatus;
+reg [5:0] zStatus;
 always @(*) begin
 	zStatus=0;
+	zStatus[`INVALID]=isInvalid;
 	zStatus[`IS_NAN]=isNaN;
 	zStatus[`IS_INF]=isINF;
 	zStatus[`IS_ZERO]=isZero;
@@ -350,7 +358,7 @@ module R5FP_mul_special_cases #(
 	parameter EXP_W=5,
 	parameter SIG_W=10) (
 	input [EXP_W+SIG_W:0] a, b,
-	output reg sign, isNaN, signalNaN, isINF, isZero);
+	output reg sign, isNaN, signalNaN, isINF, isZero, isInvalid);
 
 localparam E_MAX=((1<<EXP_W)-1);
     
@@ -363,15 +371,23 @@ assign {b_s,b_e,b_m}=b;
 always@(*)   begin
 	sign=0;
 	isNaN=0;
+	isInvalid=0;
 	isINF=0;
 	isZero=({a_e,a_m}==0||{b_e,b_m}==0);
 	sign=a_s^b_s;
+	//if inf*0 return NaN
+	if ((a_e==E_MAX&&a_m==0&&b_e==0&&b_m==0)||
+	    (b_e==E_MAX&&b_m==0&&a_e==0&&a_m==0)) begin
+		isNaN = 1;
+		signalNaN=1;
+		isInvalid=1;
+	end
 	//if a is NaN or b is NaN return NaN 
-	if ((a_e==E_MAX && a_m != 0)) begin
+	else if ((a_e==E_MAX && a_m != 0)) begin
 		isNaN = 1;
 		signalNaN=!a_m[SIG_W-1];
 	end
-	if ((b_e==E_MAX && b_m != 0)) begin
+	else if ((b_e==E_MAX && b_m != 0)) begin
 		isNaN = 1;
 		signalNaN=!b_m[SIG_W-1];
 	end
@@ -449,39 +465,27 @@ end
 
 endmodule
 
-module R5FP_mac #(
+module R5FP_acc #(
 	parameter EXP_W=5,
 	parameter SIG_W=10) (
-	input [EXP_W+SIG_W:0] a, b, c,
+	input [EXP_W-1:0] dExp,
+	/* verilator lint_off UNUSED */
+	input [6-1:0] dStatus,
+	/* verilator lint_on UNUSED */
+	input [SIG_W*2+2:0] dSig,
+	input dSign,
+	input toInf,
+	input [EXP_W+SIG_W:0] c,
 	input [2:0] rnd,
 
 	output zToInf,
+	output reg specialTiny,
 	output [EXP_W-1:0] zExp,
-	output reg [5-1:0] zStatus,
+	output reg [6-1:0] zStatus,
 	output [SIG_W*2+4:0] zSig,
 	output zSign);
 
-wire [EXP_W-1:0] dExp;
-/* verilator lint_off UNUSED */
-wire [5-1:0] dStatus;
-/* verilator lint_on UNUSED */
-wire [SIG_W*2+2:0] dSig;
-wire dSign;
-
-R5FP_mul #(
-	.EXP_W(EXP_W),
-	.SIG_W(SIG_W)) mul (
-	.a(a), .b(b),
-	.zExp(dExp),
-	.toInf(toInf),
-	.zStatus(dStatus),
-	.zSig(dSig),
-	.zSign(dSign));
-
-wire signalNaN=dSig[SIG_W*2];
-wire d_quiet_NaN=!signalNaN;
 reg d_m_all_zero, d_e_all_zero, d_e_all_one;
-wire toInf;
 always @(*) begin
 	d_m_all_zero=0; d_e_all_zero=0; d_e_all_one=0;
 	if(dStatus[`IS_NAN]) begin
@@ -495,6 +499,9 @@ always @(*) begin
 	end
 end
 
+wire signalNaN=dSig[SIG_W*2];
+wire d_quiet_NaN=!signalNaN;
+wire [6-1:0] zStatusPre;
 R5FP_add_inner #(
 	.EXP_W(EXP_W),
 	.SIG_W(SIG_W*2+1)) add (
@@ -506,18 +513,33 @@ R5FP_add_inner #(
 	.rnd(rnd),
 
 	.zExp(zExp),
-	.zStatus(zStatus),
+	.zStatus(zStatusPre),
 	.zSig(zSig),
 	.zSign(zSign));
 
-wire [EXP_W-1:0] c_e;
-wire [SIG_W-1:0] c_m;
-/* verilator lint_off UNUSED */
-wire c_s;
-/* verilator lint_on UNUSED */
-assign {c_s,c_e,c_m}=c; 
-wire cIsInf=((&c_e)==1&&c_m==0);
-assign zToInf=toInf&&!cIsInf;
+assign zStatus={zStatusPre[`INVALID]|dStatus[`INVALID], zStatusPre[4:0]};
+
+logic cSign;
+logic [SIG_W-1:0] cSig;
+logic [EXP_W-1:0] cExp;
+assign {cSign,cExp,cSig}=c;
+wire cIsInfOrNaN=(&cExp)==1;
+assign zToInf=toInf&&!cIsInfOrNaN;
+
+always @(*) begin
+	reg tooSmall,diffSign,sameSignCross,cMarginal;
+	specialTiny=0;
+	if(rnd==`RND_NEAREST_EVEN||rnd==`RND_NEAREST_UP) begin
+		tooSmall=(dExp<=`EXP_DENORMAL_MIN(EXP_W-1,SIG_W));
+		cMarginal=(cExp==`EXP_DENORMAL_MIN(EXP_W-1,SIG_W)&&cSig==0);
+		diffSign=(!dStatus[`Z_IS_ZERO])&&(dSign!=cSign);
+		sameSignCross=(!dStatus[`Z_IS_ZERO])&&(cExp<=`EXP_DENORMAL_MAX(EXP_W-1)&&cSig!=0)&&(dSign==cSign);
+		if(tooSmall&&(diffSign||sameSignCross)) 
+			specialTiny=1;
+		if(cMarginal)
+			specialTiny=1;
+	end
+end
 
 endmodule
 

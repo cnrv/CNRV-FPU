@@ -40,7 +40,7 @@ logic idiv_done;
 logic idiv_ready;
 logic [EXP_W:0] xExp;
 logic [SIG_W+3-1:0] xSig;
-logic [4:0] xMidStatus;
+logic [5:0] xMidStatus;
 logic [7:0] xStatus_fast;
 logic [7:0] zStatus;
 logic  [SIG_W+EXP_W+1:0] x_fast;
@@ -97,6 +97,9 @@ R5FP_postproc #(
 		.aSig({1'b0,xSig}),
 		.rnd(rnd),
 		.aSign(xMidStatus[`SIGN]),
+/* verilator lint_off PINCONNECTEMPTY */
+		.specialZRnd(),
+/* verilator lint_on PINCONNECTEMPTY */
 		.z(zx),
 		.zStatus(zStatus));
 

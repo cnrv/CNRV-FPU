@@ -21,6 +21,7 @@ function automatic [2:0] to_snps_rnd(logic [2:0] i);
 	else return i;
 endfunction
 
+`define INVALID 5
 `define SIGN 4
 `define STICKY 3
 `define IS_NAN 2

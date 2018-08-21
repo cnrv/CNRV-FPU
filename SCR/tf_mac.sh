@@ -5,10 +5,12 @@
 # 4 -rnear_maxMag    --Test only rounding to nearest/maximum magnitude
 #                        (nearest/away).
 
+#TF_DUMP=1 ../../TestFloat-3e/build/Linux-x86_64-GCC/testsoftfloat f32_mulAdd -seed 314 -level 1 -tininessafter -rnear_even   |grep "DUMP:" > tests.dat
+#cat tests.dat | RND=0 ./obj_dir/Vtb_fp_mac
 
-TF_DUMP=1 ../../TestFloat-3e/build/Linux-x86_64-GCC/testsoftfloat f32_mulAdd -seed 314 -level 2 -tininessafter -rnear_even   |grep "DUMP:" | RND=0 ./obj_dir/Vtb_fp_mac
-TF_DUMP=1 ../../TestFloat-3e/build/Linux-x86_64-GCC/testsoftfloat f32_mulAdd -seed 314 -level 2 -tininessafter -rminMag      |grep "DUMP:" | RND=1 ./obj_dir/Vtb_fp_mac
-TF_DUMP=1 ../../TestFloat-3e/build/Linux-x86_64-GCC/testsoftfloat f32_mulAdd -seed 314 -level 2 -tininessafter -rmin         |grep "DUMP:" | RND=2 ./obj_dir/Vtb_fp_mac
-TF_DUMP=1 ../../TestFloat-3e/build/Linux-x86_64-GCC/testsoftfloat f32_mulAdd -seed 314 -level 2 -tininessafter -rmax         |grep "DUMP:" | RND=3 ./obj_dir/Vtb_fp_mac
-TF_DUMP=1 ../../TestFloat-3e/build/Linux-x86_64-GCC/testsoftfloat f32_mulAdd -seed 314 -level 2 -tininessafter -rnear_maxMag |grep "DUMP:" | RND=4 ./obj_dir/Vtb_fp_mac
-
+TF_DUMP=1 ../../TestFloat-3e/build/Linux-x86_64-GCC/testsoftfloat f32_mulAdd -seed 314 -level 1 -tininessafter -rnear_even   |grep "DUMP:" | RND=0 ./obj_dir/Vtb_fp_mac
+TF_DUMP=1 ../../TestFloat-3e/build/Linux-x86_64-GCC/testsoftfloat f32_mulAdd -seed 314 -level 1 -tininessafter -rminMag      |grep "DUMP:" | RND=1 ./obj_dir/Vtb_fp_mac
+TF_DUMP=1 ../../TestFloat-3e/build/Linux-x86_64-GCC/testsoftfloat f32_mulAdd -seed 314 -level 1 -tininessafter -rmin         |grep "DUMP:" | RND=2 ./obj_dir/Vtb_fp_mac
+TF_DUMP=1 ../../TestFloat-3e/build/Linux-x86_64-GCC/testsoftfloat f32_mulAdd -seed 314 -level 1 -tininessafter -rmax         |grep "DUMP:" | RND=3 ./obj_dir/Vtb_fp_mac
+TF_DUMP=1 ../../TestFloat-3e/build/Linux-x86_64-GCC/testsoftfloat f32_mulAdd -seed 314 -level 1 -tininessafter -rnear_maxMag |grep "DUMP:" | RND=4 ./obj_dir/Vtb_fp_mac
+#

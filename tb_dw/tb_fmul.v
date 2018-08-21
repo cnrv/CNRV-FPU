@@ -19,7 +19,7 @@ module R5FP_mul_wrap #(
 
 wire [EXP_W+SIG_W+1:0] ax, bx, zx;
 wire [EXP_W:0] zExp;
-wire [5-1:0] zStatusMiddle;
+wire [6-1:0] zStatusMiddle;
 wire [SIG_W*2+2:0] zSig;
 wire zSign;
 
@@ -46,6 +46,9 @@ R5FP_postproc #(
 	.aSig(zSig),
 	.aSign(zSign),
 	.rnd(rnd),
+/* verilator lint_off PINCONNECTEMPTY */
+	.specialZRnd(),
+/* verilator lint_on PINCONNECTEMPTY */
 	.z(zx),
 	.zStatus(zStatus));
 

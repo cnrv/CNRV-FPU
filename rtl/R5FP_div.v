@@ -78,7 +78,7 @@ module R5FP_div #(
 		input strobe_i,
 		output [EXP_W-1:0] xExp_o,
 		output [SIG_W+3-1:0] xSig_o,
-		output [4:0] xMidStatus_o,
+		output [5:0] xMidStatus_o,
 
 		output [7:0] xStatus_fast_o,
 		output  [SIG_W + EXP_W:0] x_fast_o,
@@ -285,7 +285,7 @@ generate
 endgenerate
 
 assign xSig_o={xSig,roundBit};
-assign xMidStatus_o={sign, stickyBit, 3'b0};
+assign xMidStatus_o={1'b0, sign, stickyBit, 3'b0};
 
 assign xStatus_fast_o = status_reg;
 assign x_fast_o = x_reg;

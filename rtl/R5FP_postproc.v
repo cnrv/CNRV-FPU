@@ -7,16 +7,22 @@ module R5FP_postproc_core #(
 		parameter SIG_W=23,
 		parameter EXP_W=9) (
 		input [EXP_W-1:0] aExp,
-		input [5-1:0] aStatus,
+		input [6-1:0] aStatus,
 /* verilator lint_off UNUSED */
 		input [I_SIG_W-1:0] aSig,
 /* verilator lint_on UNUSED */
 		input  [2:0] rnd,
 		input aSign,
 		input [EXP_W-1:0] tailZeroCnt,
+		output specialZRnd,
 		output reg [SIG_W+EXP_W:0] z,
 		output reg [7:0] zStatus);
 
+reg sticky, round_bit, guard_bit;
+reg useMinValue;
+wire specialRnd=(aSig[I_SIG_W-SIG_W-2:I_SIG_W-SIG_W-3]==2'b10);
+reg specialZ;
+assign specialZRnd=specialZ&&specialRnd;
 always @(*) begin
 	reg [EXP_W+2:0] aExpExt;
 	reg signed [I_SIG_W:0] aSig2;
@@ -26,10 +32,11 @@ always @(*) begin
 	reg [EXP_W-1:0] allOnesExp;
 	reg [I_SIG_W+SIG_W:0] aSig3,rnd_bits,aSig3Tail,aSig4;
 	reg [SIG_W-1:0] mask;
-	reg sticky, round_bit, guard_bit;
 	reg [SIG_W-1:0] zSig;
-	reg roundCarry,needShift,useMinValue;
+	reg roundCarry,needShift;
 	// variable initialization
+	specialZ=0;
+	useMinValue=0;
 	zeroSig = 0;
 	oneSig = 0;
 	oneSig[0] = 1'b1;
@@ -41,12 +48,15 @@ always @(*) begin
 	z = 0;
 	rnd_bits = 0;
 	mask = 0;
-	useMinValue=0;    
 
 	zStatus = 0;
 	zStatus[`Z_IS_ZERO] = aStatus[`IS_ZERO];
 	zStatus[`Z_IS_INF] = aStatus[`IS_INF];
+`ifdef FORCE_DW_NAN_BEHAVIOR
 	zStatus[`Z_INVALID] = aStatus[`IS_NAN];
+`else
+	zStatus[`Z_INVALID] = aStatus[`INVALID];
+`endif
 	zStatus[`Z_INEXACT] = aStatus[`STICKY];
 	  
 	//if(aSig[I_SIG_W-1:I_SIG_W-2]!=2'b01) begin
@@ -84,7 +94,7 @@ always @(*) begin
 			zStatus[`Z_IS_INF] = 1'b0;
 			zStatus[`Z_INEXACT] = 1'b0;
 			z = {1'b0, allOnesExp, 1'b1, tmpZero};
-			//`DEBUG("HereG aSign:%b",aSign);
+			//`DEBUG("HereG aSign:%b zStatus:%b",aSign,zStatus);
 		end
 		else if (zStatus[`Z_IS_INF] == 1'b1) begin
 			z = {aStatus[`SIGN], allOnesExp, zeroSig};
@@ -204,6 +214,17 @@ always @(*) begin
 				if(zStatus[`Z_INEXACT]&&aExpExt<=`EXP_DENORMAL_MAX(EXP_W-1))  begin
 					zStatus[`Z_TINY] = 1'b1;
 				end
+				//very special case about exiting denormal format
+				if(aExpExt==`EXP_DENORMAL_MAX(EXP_W-1)+1&&zSig==0) begin
+					specialZ=1;
+					//`DEBUG("HereX: grt:%b%b%b",guard_bit,round_bit,sticky);
+					if(rnd==`RND_NEAREST_EVEN||rnd==`RND_NEAREST_UP) begin
+						zStatus[`Z_TINY]|={guard_bit,round_bit,sticky}==3'b110;
+					end
+					if(rnd==`RND_DOWN||rnd==`RND_UP) begin
+						zStatus[`Z_TINY]|={round_bit,sticky}<=2'b10&&guard_bit;
+					end
+				end
 `endif
 `endif
 			end
@@ -220,10 +241,11 @@ module R5FP_postproc #(
 	parameter SIG_W=23,
 	parameter EXP_W=9) (
 	input [EXP_W-1:0] aExp,
-	input [5-1:0] aStatus,
+	input [6-1:0] aStatus,
 	input [I_SIG_W-1:0] aSig,
 	input aSign,
 	input  [2:0] rnd,
+	output specialZRnd,
 	output reg [SIG_W+EXP_W:0] z,
 	output reg [7:0] zStatus);
 
@@ -245,6 +267,7 @@ R5FP_postproc_core #(
 	.rnd(rnd),
 	.aSign(aSign),
 	.tailZeroCnt(tailZeroCnt),
+	.specialZRnd(specialZRnd),
 	.z(z),
 	.zStatus(zStatus));
 	

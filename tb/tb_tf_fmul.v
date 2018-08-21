@@ -11,7 +11,7 @@ module R5FP_mul_wrap #(
 
 wire [EXP_W+SIG_W+1:0] ax, bx, zx;
 wire [EXP_W:0] zExp;
-wire [5-1:0] zStatusMiddle;
+wire [6-1:0] zStatusMiddle;
 wire [SIG_W*2+2:0] zSig;
 wire zSign;
 
@@ -41,6 +41,9 @@ R5FP_postproc #(
 	.aSig(zSig),
 	.aSign(zSign),
 	.rnd(rnd),
+/* verilator lint_off PINCONNECTEMPTY */
+	.specialZRnd(),
+/* verilator lint_on PINCONNECTEMPTY */
 	.z(zx),
 	.zStatus(zStatus));
 
@@ -106,17 +109,16 @@ end
 
 always @(posedge clk) begin
 	//$display("Now a: %b.%b.%b  b: %b.%b.%b", aSign,aExp,aSig,  bSign,bExp,bSig);
-	reg pass, z0IsNaN;
+	reg pass;
 	pass={z0Sign,z0Exp,z0Sig}=={ySign,yExp,ySig}||{z0Exp,z0Sig,yExp,ySig}==0;
 
 	//special case for NaN
 	if((&z0Exp)==1&&(&yExp)==1&&z0Sig!=0&&ySig!=0) pass=1;
 
-	z0IsNaN=(&z0Exp==1 && z0Sig!=0);
 	s0=s0pre;
 	s0[3]=0; //useless bit
-	if(z0Exp!=0) s0[1]=1'b0; // fix an underflow bug of testfloat?
-	if(s0!=yS && !z0IsNaN) pass=0;
+
+	if(s0!=yS) pass=0;
 
 	if(pass) begin
 		//$display("Pass");
@@ -127,11 +129,13 @@ always @(posedge clk) begin
 	else begin
 		$display("Fail!!");
 		$display("a b: %08h %08h",a,b);
-		$display("a:  %b.%b.%b  b:  %b.%b.%b  z0: %b.%b.%b", aSign,aExp,aSig,  bSign,bExp,bSig,  z0Sign,z0Exp,z0Sig);
+		$display("a:  %b.%b.%b  b:  %b.%b.%b  z0: %b.%b.%b z0IsNaN:%b", aSign,aExp,aSig,  bSign,bExp,bSig,  z0Sign,z0Exp,z0Sig,1'b0);
 		$display("a:  %b.%b.%b  b:  %b.%b.%b  y:  %b.%b.%b", aSign,aExp,aSig,  bSign,bExp,bSig, ySign,yExp,ySig);
 		$display("ax: %b.%b.%b bx: %b.%b.%b zx: %b.%b.%b", I.ax[EXP_W+SIG_W+1],I.ax[EXP_W+SIG_W:SIG_W],I.ax[SIG_W-1:0], I.bx[EXP_W+SIG_W+1],I.bx[EXP_W+SIG_W:SIG_W],I.bx[SIG_W-1:0], I.zx[EXP_W+SIG_W+1],I.zx[EXP_W+SIG_W:SIG_W],I.zx[SIG_W-1:0]);
 		$display("s0: %b  yS:%b", s0, yS);
-		$finish();
+		$display("I.zSig: %b-%b %b%b%b", I.zSig[SIG_W*2+2:SIG_W],I.zSig[SIG_W-1:0],
+			I.pp.core.guard_bit, I.pp.core.round_bit, I.pp.core.sticky);
+		//$finish();
 	end
 end
 /* verilator lint_on BLKSEQ */
