@@ -13,7 +13,7 @@ localparam I_SIG_W=SIG_W*2+5;
 localparam EXP_W_P1=EXP_W+1;
 
 wire [EXP_W+SIG_W+1:0] ax, bx, cx, zx;
-wire [EXP_W:0] zExp;
+wire [EXP_W:0] zExp, tailZeroCnt;
 wire [6-1:0] zStatusMiddle;
 wire [SIG_W*2+4:0] zSig;
 wire zSign;
@@ -38,6 +38,9 @@ R5FP_mul #(
 	.SIG_W(SIG_W)) mul (
 	.a(ax), .b(bx),
 	.zExp(dExp),
+/* verilator lint_off  PINCONNECTEMPTY */
+	.tailZeroCnt(),
+/* verilator lint_on PINCONNECTEMPTY */
 	.toInf(toInf),
 	.zStatus(dStatus),
 	.zSig(dSig),
@@ -57,37 +60,37 @@ R5FP_acc #(
 
 	.zToInf(zToInf),
 	.specialTiny(specialTiny),
-	.zExp(zExp), .zStatus(zStatusMiddle),
+	.zExp(zExp), .tailZeroCnt(tailZeroCnt), .zStatus(zStatusMiddle),
 	.zSig(zSig), .zSign(zSign));
 
-wire [7:0] zStatusPre;
-wire specialZRnd;
 R5FP_postproc #(
 	.I_SIG_W(I_SIG_W),
 	.SIG_W(SIG_W),
 	.EXP_W(EXP_W_P1)) pp (
 	.aExp(zExp),
+	.tailZeroCnt(tailZeroCnt),
 	.aStatus(zStatusMiddle),
 	.aSig(zSig),
 	.aSign(zSign),
+	.zToInf(zToInf),
+	.specialTiny(specialTiny),
 	.rnd(rnd),
 	.z(zx),
-	.specialZRnd(specialZRnd),
-	.zStatus(zStatusPre));
+	.zStatus(zStatus));
 
 R5FP_exp_decr #(
 	.SIG_W(SIG_W),
 	.EXP_W(EXP_W)) z_d (.a(zx), .z(z));
 
-always @(*) begin
-	//reg specialZ;
-	zStatus=zStatusPre;
-	if(zToInf) begin
-		zStatus[`Z_INEXACT]=1;
-		zStatus[`Z_HUGE]=1;
-	end
-	if(specialTiny&&specialZRnd) zStatus[`Z_TINY]=1; // I don't know why...
-end
+//always @(*) begin
+//	//reg specialZ;
+//	zStatus=zStatusPre;
+//	if(zToInf) begin
+//		zStatus[`Z_INEXACT]=1;
+//		zStatus[`Z_HUGE]=1;
+//	end
+//	if(specialTiny&&specialZRnd) zStatus[`Z_TINY]=1; // I don't know why...
+//end
 
 endmodule
 
@@ -98,9 +101,13 @@ module tb_fp_mac(input clk,
 /* verilator lint_on UNUSED */
 	input [2:0] rnd);
 
+`ifdef FP64
+parameter EXP_W=11;
+parameter SIG_W=52;
+`else
 parameter EXP_W=8;
 parameter SIG_W=23;
-localparam I_SIG_W=SIG_W*2+5;
+`endif
 integer fd, readcount;
 
 logic aSign;

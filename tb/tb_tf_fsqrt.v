@@ -71,8 +71,13 @@ endmodule
 
 module tb_fsqrt(input clk, reset, input [2:0] rnd);
 
+`ifdef FP64
+parameter EXP_W=11;
+parameter SIG_W=52;
+`else
 parameter SIG_W=23;
 parameter EXP_W=8;
+`endif
 
 logic done,strobe;
 logic [7:0] status;

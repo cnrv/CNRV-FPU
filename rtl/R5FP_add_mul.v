@@ -9,6 +9,7 @@ module R5FP_add #(
 	input [EXP_W+SIG_W:0] a, b,
 
 	output [EXP_W-1:0] zExp,
+	output reg [EXP_W-1:0] tailZeroCnt,
 	output [6-1:0] zStatus,
 	output [SIG_W+4-1:0] zSig,
 	output zSign);
@@ -30,6 +31,13 @@ R5FP_add_inner #(
 	.zStatus(zStatus),
 	.zSig(zSig),
 	.zSign(zSign));
+
+always @(*) begin
+	tailZeroCnt=0;
+	if(zExp>=`EXP_DENORMAL_MIN(EXP_W-1,SIG_W) && zExp<=`EXP_DENORMAL_MAX(EXP_W-1)) begin
+		tailZeroCnt=1+(`EXP_DENORMAL_MAX(EXP_W-1)-zExp);
+	end
+end
 endmodule
 
 module R5FP_add_inner #(
@@ -41,12 +49,11 @@ module R5FP_add_inner #(
 	input [2:0] rnd,
 
 	output [EXP_W-1:0] zExp,
-	output [6-1:0] zStatus,
+	output reg [6-1:0] zStatus,
 	output [SIG_W+4-1:0] zSig,
 	output zSign);
 
 wire sign, isNaN, isINF, useA, useB, isZero0, signalNaN, isInvalid;
-wire a_s;
 R5FP_add_special_cases #(
 	.EXP_W(EXP_W),
 	.SIG_W(SIG_W)) sp (
@@ -67,7 +74,6 @@ R5FP_add_core #(
 	.SIG_W(SIG_W)) add (
 	.a(a), .b(b), .GRT(GRT), .isZero(isZero), .z(z_tmp));
 
-reg [4:0] zStatus;
 always @(*) begin
 	zStatus=0;
 	zStatus[`INVALID]=isInvalid;
@@ -183,8 +189,8 @@ wire [SIG_W+3:0] bSig={2'b01,b[SIG_W-1:0],2'b0};
 wire [EXP_W-1:0] aExp=a[EXP_W+SIG_W-1:SIG_W];
 wire [EXP_W-1:0] bExp=b[EXP_W+SIG_W-1:SIG_W];
 
-parameter width = SIG_W+1;
-parameter addr_width = $clog2(width);
+localparam width = SIG_W+1;
+localparam addr_width = $clog2(width);
 /* verilator lint_off UNUSED */
 /* verilator lint_off WIDTH */
 `include "DW_lza_function.inc"
@@ -211,9 +217,9 @@ reg [SIG_W+3:0] largerSig, smallerSig, smallerSigSh;
 reg [SIG_W+3:0] smallerSigSh1;
 /* verilator lint_on UNUSED */
 reg [SIG_W+3:0] zSigExt;
-parameter [1:0] NORMAL_ADD=0;
-parameter [1:0] NORMAL_SUB=1;
-parameter [1:0] SPECIAL_SUB=2;
+localparam [1:0] NORMAL_ADD=0;
+localparam [1:0] NORMAL_SUB=1;
+localparam [1:0] SPECIAL_SUB=2;
 
 always @(*) begin
 	lzCount=0;
@@ -290,11 +296,13 @@ always @(*) begin
 	end
 	//`DEBUG("Here3 a:%b b:%b zExp:%b (%b) zSigExt:%b sticky:%b",a,b,zExp,`EXP_NORMAL_MAX(EXP_W-1),zSigExt,sticky);
 
+//synopsys translate_off
 	if(zSigExt[SIG_W+3:SIG_W+2]!=2'b01 && zSigExt!=0) begin
 		$display("zSigExt has wrong leading 1 bit!! %d-- a:%b b:%b largerSig:%b smallerSig:%b smallerSigSh:%b zSigExt:%b",
 		         opType, a,b, largerSig, smallerSig, smallerSigSh, zSigExt);
 		$finish();
 	end
+//synopsys translate_on
 	zSig=zSigExt[SIG_W+1:2];
 	GRT={zSigExt[1:0],sticky};
 end
@@ -306,8 +314,8 @@ module R5FP_mul #(
 	parameter SIG_W=10) (
 	input [EXP_W+SIG_W:0] a, b,
 
-	output [EXP_W-1:0] zExp,
-	output [6-1:0] zStatus,
+	output [EXP_W-1:0] zExp,tailZeroCnt,
+	output reg [6-1:0] zStatus,
 	output [SIG_W*2+2:0] zSig,
 	output toInf,
 	output zSign);
@@ -328,10 +336,9 @@ R5FP_mul_core #(
 	.EXP_W(EXP_W),
 	.SIG_W(SIG_W)) mul (
 	.a(a), .b(b), .z(z_tmp), 
-	.toInf(toInfPre));
+	.toInf(toInfPre), .tailZeroCnt(tailZeroCnt));
 assign toInf=toInfPre&&(!isINF)&&(!isNaN);
 
-reg [5:0] zStatus;
 always @(*) begin
 	zStatus=0;
 	zStatus[`INVALID]=isInvalid;
@@ -416,12 +423,40 @@ always@(*)   begin
 end
 endmodule
 
+module R5FP_mul_by_1 #(
+	parameter EXP_W=5,
+	parameter SIG_W=10) (
+	input [EXP_W+SIG_W:0] a,
+	output [EXP_W-1:0] zExp,
+	output reg [6-1:0] zStatus,
+	output [SIG_W*2+2:0] zSig,
+	output zSign);
+
+wire [EXP_W-1:0] bExp=(1<<EXP_W)/2-1;
+wire [SIG_W-1:0] bSig=0;
+wire [EXP_W+SIG_W:0] b={1'b0,bExp,bSig};
+R5FP_mul #(
+	.EXP_W(EXP_W),
+	.SIG_W(SIG_W)) mul (
+	.a(a), .b(b),
+	.zExp(zExp),
+/* verilator lint_off  PINCONNECTEMPTY */
+	.tailZeroCnt(),
+	.toInf(),
+/* verilator lint_on PINCONNECTEMPTY */
+	.zStatus(zStatus),
+	.zSig(zSig),
+	.zSign(zSign));
+
+endmodule
+
 module R5FP_mul_core #(
 	parameter EXP_W=5,
 	parameter SIG_W=10) (
 	input [EXP_W+SIG_W:0] a, b,
+	output reg [EXP_W-1:0] tailZeroCnt,
 	output [EXP_W+SIG_W*2+1:0] z,
-	output toInf);
+	output reg toInf);
 
 reg zSign;
 reg signed [EXP_W:0] zExp;
@@ -457,8 +492,14 @@ always @(*) begin
 		toInf=1;
 	end
 
+//synopsys translate_off
 	if(zSigExt[SIG_W*2+1]!=1'b1) begin
 		$display("zSigExt has wrong leading 1 bit!!");
+	end
+//synopsys translate_on
+	tailZeroCnt=0;
+	if(zExp[EXP_W-1:0]>=`EXP_DENORMAL_MIN(EXP_W-1,SIG_W) && zExp[EXP_W-1:0]<=`EXP_DENORMAL_MAX(EXP_W-1)) begin
+		tailZeroCnt=1+(`EXP_DENORMAL_MAX(EXP_W-1)-zExp[EXP_W-1:0]);
 	end
 	zSig=zSigExt[SIG_W*2:0];
 end
@@ -481,6 +522,7 @@ module R5FP_acc #(
 	output zToInf,
 	output reg specialTiny,
 	output [EXP_W-1:0] zExp,
+	output reg [EXP_W-1:0] tailZeroCnt,
 	output reg [6-1:0] zStatus,
 	output [SIG_W*2+4:0] zSig,
 	output zSign);
@@ -517,6 +559,13 @@ R5FP_add_inner #(
 	.zSig(zSig),
 	.zSign(zSign));
 
+always @(*) begin
+	tailZeroCnt=0;
+	if(zExp>=`EXP_DENORMAL_MIN(EXP_W-1,SIG_W) && zExp<=`EXP_DENORMAL_MAX(EXP_W-1)) begin
+		tailZeroCnt=1+(`EXP_DENORMAL_MAX(EXP_W-1)-zExp);
+	end
+end
+
 assign zStatus={zStatusPre[`INVALID]|dStatus[`INVALID], zStatusPre[4:0]};
 
 logic cSign;
@@ -527,14 +576,15 @@ wire cIsInfOrNaN=(&cExp)==1;
 assign zToInf=toInf&&!cIsInfOrNaN;
 
 always @(*) begin
-	reg tooSmall,diffSign,sameSignCross,cMarginal;
+	reg dSmall,cSmall,diffSign,sameSignCross,cMarginal;
 	specialTiny=0;
 	if(rnd==`RND_NEAREST_EVEN||rnd==`RND_NEAREST_UP) begin
-		tooSmall=(dExp<=`EXP_DENORMAL_MIN(EXP_W-1,SIG_W));
+		dSmall=(dExp==`EXP_DENORMAL_MAX(EXP_W-1) || dExp==`EXP_DENORMAL_MAX(EXP_W-1)-1);
 		cMarginal=(cExp==`EXP_DENORMAL_MIN(EXP_W-1,SIG_W)&&cSig==0);
 		diffSign=(!dStatus[`Z_IS_ZERO])&&(dSign!=cSign);
-		sameSignCross=(!dStatus[`Z_IS_ZERO])&&(cExp<=`EXP_DENORMAL_MAX(EXP_W-1)&&cSig!=0)&&(dSign==cSign);
-		if(tooSmall&&(diffSign||sameSignCross)) 
+		cSmall=(cExp==`EXP_DENORMAL_MAX(EXP_W-1) || cExp==`EXP_DENORMAL_MAX(EXP_W-1)-1);
+		sameSignCross=(!dStatus[`Z_IS_ZERO])&&cSmall&&(dSign==cSign);
+		if(dSmall||(diffSign||sameSignCross)) 
 			specialTiny=1;
 		if(cMarginal)
 			specialTiny=1;

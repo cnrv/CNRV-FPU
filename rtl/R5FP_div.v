@@ -76,7 +76,7 @@ module R5FP_div #(
 		input  [SIG_W + EXP_W:0] a_i, b_i,
 		input  [2:0] rnd_i,
 		input strobe_i,
-		output [EXP_W-1:0] xExp_o,
+		output [EXP_W-1:0] xExp_o,tailZeroCnt_o,
 		output [SIG_W+3-1:0] xSig_o,
 		output [5:0] xMidStatus_o,
 
@@ -104,7 +104,7 @@ reg [EXP_W - 1:0] bExp_r;
 reg [SIG_W - 1:0] bSig_r;
 reg bSign_r;
 reg signed [EXP_W+1:0] xExp;
-reg signed [EXP_W-1:0] xExp_r;
+reg signed [EXP_W-1:0] xExp_r, tailZeroCnt_r;
 reg [8     - 1:0] status_fast;
 reg [(EXP_W + SIG_W):0] x_fast;
 reg [8     - 1:0] status_reg;
@@ -247,17 +247,26 @@ always @(posedge clk) begin
 	//	idiv_D, aSig_r, expNoBias, aExp_r);
 	//$display("%d use_fast:%b  a:%b-%b strobe_r:%b x_fast:%b status_fast:%b",
 	//	$time, use_fast,  aExp_r, aSig_r, strobe_r, x_fast, status_fast);
+	reg [EXP_W-1:0] exp;
+	exp=xExp[EXP_W-1:0];
 	if(strobe_r) begin
 		if(use_fast) begin
 			x_reg<=x_fast;
 			status_reg<=status_fast;
 		end
 		else begin
-			xExp_r<=xExp[EXP_W-1:0];
+			xExp_r<=exp;
+			if(exp>=`EXP_DENORMAL_MIN(EXP_W-1,SIG_W) && exp<=`EXP_DENORMAL_MAX(EXP_W-1)) begin
+				tailZeroCnt_r<=1+(`EXP_DENORMAL_MAX(EXP_W-1)-exp);
+			end
+			else begin
+				tailZeroCnt_r<=0;
+			end
 		end
 	end
 end
 assign xExp_o=xExp_r;
+assign tailZeroCnt_o=tailZeroCnt_r;
 
 always @(posedge clk) begin
 	if(reset) use_fast_r<=1'b0;

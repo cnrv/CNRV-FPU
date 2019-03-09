@@ -1,28 +1,54 @@
 
+`include "R5FP_inc.vh"
+
 `define DEBUG $display
 `define FUNC_POSTPROC func_postproc
 
+
+module R5FP_postproc_prepare #(
+		parameter I_SIG_W=27,
+		parameter SIG_W=23,
+		parameter EXP_W=9) (
+		input [EXP_W-1:0] tailZeroCnt,
+		output [I_SIG_W:0] mask, maskB);
+
+reg [I_SIG_W+SIG_W:0] tmpMask,tmpMaskB;
+always @(*) begin
+	tmpMask=0;
+	tmpMask[I_SIG_W-3:0]={(I_SIG_W-2){1'b1}};
+	tmpMask<<=tailZeroCnt;
+	tmpMaskB=0;
+	tmpMaskB[I_SIG_W-2]=1'b1;
+	tmpMaskB<<=tailZeroCnt;
+/* verilator lint_off WIDTH */
+	mask=tmpMask>>SIG_W;
+	maskB=tmpMaskB>>SIG_W;
+/* verilator lint_on WIDTH */
+end
+
+endmodule
+
 module R5FP_postproc_core #(
-		parameter I_SIG_W=25,
+		parameter I_SIG_W=27,
 		parameter SIG_W=23,
 		parameter EXP_W=9) (
 		input [EXP_W-1:0] aExp,
-		input [6-1:0] aStatus,
 /* verilator lint_off UNUSED */
+		input [6-1:0] aStatus,
 		input [I_SIG_W-1:0] aSig,
+		input [I_SIG_W:0] mask,maskB,
 /* verilator lint_on UNUSED */
 		input  [2:0] rnd,
-		input aSign,
+		input aSign, specialTiny, zToInf,
 		input [EXP_W-1:0] tailZeroCnt,
-		output specialZRnd,
 		output reg [SIG_W+EXP_W:0] z,
 		output reg [7:0] zStatus);
 
 reg sticky, round_bit, guard_bit;
 reg useMinValue;
-wire specialRnd=(aSig[I_SIG_W-SIG_W-2:I_SIG_W-SIG_W-3]==2'b10);
-reg specialZ;
-assign specialZRnd=specialZ&&specialRnd;
+/* verilator lint_off UNUSED */
+wire specialRnd=specialTiny&&(aSig[I_SIG_W-SIG_W-2:I_SIG_W-SIG_W-3]==2'b10);
+/* verilator lint_on UNUSED */
 always @(*) begin
 	reg [EXP_W+2:0] aExpExt;
 	reg signed [I_SIG_W:0] aSig2;
@@ -30,12 +56,11 @@ always @(*) begin
 	reg [SIG_W-1:0] oneSig;
 	reg [EXP_W-1:0] zeroExp,minExp;
 	reg [EXP_W-1:0] allOnesExp;
-	reg [I_SIG_W+SIG_W:0] aSig3,rnd_bits,aSig3Tail,aSig4;
-	reg [SIG_W-1:0] mask;
+	reg [I_SIG_W+SIG_W:0] aSig3,rnd_bits,aSig4;
+	reg [SIG_W-1:0] tmp;
 	reg [SIG_W-1:0] zSig;
 	reg roundCarry,needShift;
 	// variable initialization
-	specialZ=0;
 	useMinValue=0;
 	zeroSig = 0;
 	oneSig = 0;
@@ -47,7 +72,6 @@ always @(*) begin
 	aSig3 = 0;
 	z = 0;
 	rnd_bits = 0;
-	mask = 0;
 
 	zStatus = 0;
 	zStatus[`Z_IS_ZERO] = aStatus[`IS_ZERO];
@@ -109,22 +133,24 @@ always @(*) begin
 		
 		aSig3 = { {SIG_W{1'b0}}, aSig2 } << SIG_W;
 		
-		aSig3Tail=aSig3>>tailZeroCnt;
-		sticky = (|aSig3Tail[I_SIG_W-1-1-1:0]) || sticky;
-		round_bit = aSig3Tail[I_SIG_W-1-1];
-		guard_bit = aSig3Tail[I_SIG_W-1];
+		//aSig3Tail=aSig3>>tailZeroCnt;
+		//sticky = (|aSig3Tail[I_SIG_W-1-1-1:0]) || sticky;
+		//round_bit = aSig3Tail[I_SIG_W-1-1];
+		//guard_bit = aSig3Tail[I_SIG_W-1];
+		sticky = (|(aSig2&mask)) || sticky;
+		round_bit = |(aSig2&maskB);
+		guard_bit = |(aSig2&(maskB<<1));
 		//`DEBUG("Here5 aExp:%b aSig:%b aSig2:%b aSig3:%b tailZeroCnt:%d aSig3Tail:%b sticky:%b aSig3Tail[I_SIG_W-1-1-1:0]:%b guard_bit:%b round_bit:%b aStatus:%b zStatus:%b", aExp, aSig,aSig2,aSig3,tailZeroCnt,aSig3Tail, sticky, aSig3Tail[I_SIG_W-1-1-1:0],guard_bit,round_bit,aStatus,zStatus);
 		
 		roundCarry = getRoundCarry(rnd, aSign, guard_bit, round_bit, sticky);
-		rnd_bits[0] = roundCarry;
+		rnd_bits[0] = 1'b1;
 		rnd_bits = rnd_bits<<(I_SIG_W-1);
 		rnd_bits = rnd_bits<<tailZeroCnt;
+		if(!roundCarry) rnd_bits=0;
 		//`DEBUG("Here5 %d aSig3:%b rnd_bits:%b",$time,aSig3,rnd_bits);
 		aSig4 = aSig3+rnd_bits;
 		//`DEBUG("Here5 aSig4:%b aSig4[I_SIG_W+SIG_W-1:I_SIG_W-1]:%b",aSig4,aSig4[I_SIG_W+SIG_W-1:I_SIG_W-1]);
 
-		mask=({SIG_W{1'b1}}<<tailZeroCnt);
-  
 		needShift=aSig4[I_SIG_W+SIG_W];
 		if ( needShift ) begin
 			aExpExt = aExpExt + 1;
@@ -200,9 +226,10 @@ always @(*) begin
 				//`DEBUG("HereB aExpExt%b %b zSig:%b zStatus:%b",aExpExt,`EXP_NORMAL_MAX(EXP_W-1), zSig, zStatus);
 			end
 			else begin
-				zSig=zSig&mask;
+				tmp=({SIG_W{1'b1}}<<tailZeroCnt);
+				zSig=zSig&tmp;
 				z = {aSign,aExpExt[EXP_W-1:0],zSig};
-				//`DEBUG("HereA z:%b round_bit:%b sticky:%b aExpExt:%b %b mask:%b aSig3:%b aSig2:%b zSig:%b inExact:%b", z,round_bit,sticky, aExpExt,`EXP_DENORMAL_MIN(EXP_W-1,SIG_W),mask,aSig3,aSig2,zSig,zStatus[`Z_INEXACT]);
+				//`DEBUG("HereA z:%b round_bit:%b sticky:%b aExpExt:%b %b tmp:%b aSig3:%b aSig2:%b zSig:%b inExact:%b", z,round_bit,sticky, aExpExt,`EXP_DENORMAL_MIN(EXP_W-1,SIG_W),tmp,aSig3,aSig2,zSig,zStatus[`Z_INEXACT]);
 `ifdef FORCE_DW_MULT_BEHAVIOR
 				if(aExpExt<=`EXP_DENORMAL_MAX(EXP_W-1))  begin
 					zStatus[`Z_TINY] = 1'b1;
@@ -216,7 +243,7 @@ always @(*) begin
 				end
 				//very special case about exiting denormal format
 				if(aExpExt==`EXP_DENORMAL_MAX(EXP_W-1)+1&&zSig==0) begin
-					specialZ=1;
+					if(specialRnd) zStatus[`Z_TINY]=1; // I don't know why...
 					//`DEBUG("HereX: grt:%b%b%b",guard_bit,round_bit,sticky);
 					if(rnd==`RND_NEAREST_EVEN||rnd==`RND_NEAREST_UP) begin
 						zStatus[`Z_TINY]|={guard_bit,round_bit,sticky}==3'b110;
@@ -230,6 +257,11 @@ always @(*) begin
 			end
 		end
 	end
+
+	if(zToInf) begin
+		zStatus[`Z_INEXACT]=1;
+		zStatus[`Z_HUGE]=1;
+	end
 	////`DEBUG("Here z:%b aExp:%b aSig:%b  aExpExt:%b aSig3:%b aStatus:%b",z,aExp,aSig,aExpExt,aSig3,aStatus);
 	////`DEBUG("Here %b %b   %b %b",`EXP_DENORMAL_MIN(EXP_W-1,SIG_W),`EXP_DENORMAL_MAX(EXP_W-1),`EXP_NORMAL_MIN(EXP_W-1),`EXP_NORMAL_MAX(EXP_W-1));
 end
@@ -237,25 +269,34 @@ end
 endmodule
 
 module R5FP_postproc #(
-	parameter I_SIG_W=25,
+	parameter I_SIG_W=27,
 	parameter SIG_W=23,
 	parameter EXP_W=9) (
 	input [EXP_W-1:0] aExp,
 	input [6-1:0] aStatus,
 	input [I_SIG_W-1:0] aSig,
-	input aSign,
+	input aSign, specialTiny, zToInf,
 	input  [2:0] rnd,
-	output specialZRnd,
+	input [EXP_W-1:0] tailZeroCnt,
 	output reg [SIG_W+EXP_W:0] z,
 	output reg [7:0] zStatus);
 
-reg [EXP_W-1:0] tailZeroCnt;
-always @(*) begin
-	tailZeroCnt=0;
-	if(aExp>=`EXP_DENORMAL_MIN(EXP_W-1,SIG_W) && aExp<=`EXP_DENORMAL_MAX(EXP_W-1)) begin
-		tailZeroCnt=1+(`EXP_DENORMAL_MAX(EXP_W-1)-aExp);
-	end
-end
+//reg [EXP_W-1:0] tailZeroCnt0;
+//always @(*) begin
+//	tailZeroCnt0=0;
+//	if(aExp>=`EXP_DENORMAL_MIN(EXP_W-1,SIG_W) && aExp<=`EXP_DENORMAL_MAX(EXP_W-1)) begin
+//		tailZeroCnt0=1+(`EXP_DENORMAL_MAX(EXP_W-1)-aExp);
+//	end
+//end
+
+wire [I_SIG_W:0] mask, maskB;
+R5FP_postproc_prepare #(
+		.I_SIG_W(I_SIG_W),
+		.SIG_W(SIG_W),
+		.EXP_W(EXP_W)) prepare (
+		.tailZeroCnt(tailZeroCnt),
+		.mask(mask),
+		.maskB(maskB));
 
 R5FP_postproc_core #(
 		.I_SIG_W(I_SIG_W),
@@ -264,10 +305,13 @@ R5FP_postproc_core #(
 	.aExp(aExp),
 	.aStatus(aStatus),
 	.aSig(aSig),
+	.mask(mask),
+	.maskB(maskB),
 	.rnd(rnd),
 	.aSign(aSign),
+	.specialTiny(specialTiny), 
+	.zToInf(zToInf),
 	.tailZeroCnt(tailZeroCnt),
-	.specialZRnd(specialZRnd),
 	.z(z),
 	.zStatus(zStatus));
 	

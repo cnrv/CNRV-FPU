@@ -29,9 +29,9 @@ logic idiv_strobe;
 logic [ExtWidth-1:0] idiv_Quo, idiv_Rem;
 logic idiv_done;
 logic idiv_ready;
-logic [EXP_W:0] xExp;
+logic [EXP_W:0] xExp, tailZeroCnt;
 logic [SIG_W+3-1:0] xSig;
-logic [4:0] xMidStatus;
+logic [5:0] xMidStatus;
 logic [7:0] xStatus_fast;
 logic [7:0] zStatus;
 logic  [SIG_W+EXP_W+1:0] x_fast;
@@ -45,6 +45,7 @@ R5FP_div #(
 		.rnd_i(rnd_i),
 		.strobe_i(strobe_i),
 		.xExp_o(xExp),
+		.tailZeroCnt_o(tailZeroCnt),
 		.xSig_o(xSig),
 		.xMidStatus_o(xMidStatus),
 
@@ -84,13 +85,13 @@ R5FP_postproc #(
 		.SIG_W(SIG_W),
 		.EXP_W(EXP_W+1)) pp (
 		.aExp(xExp),
+		.tailZeroCnt(tailZeroCnt),
 		.aStatus(xMidStatus),
 		.aSig({1'b0,xSig}),
 		.rnd(rnd),
 		.aSign(xMidStatus[`SIGN]),
-/* verilator lint_off PINCONNECTEMPTY */
-		.specialZRnd(),
-/* verilator lint_on PINCONNECTEMPTY */
+		.zToInf(1'b0),
+		.specialTiny(1'b0),
 		.z(zx),
 		.zStatus(zStatus));
 
@@ -107,8 +108,13 @@ endmodule
 
 module tb_fdiv(input clk, reset, input [2:0] rnd);
 
+`ifdef FP64
+parameter EXP_W=11;
+parameter SIG_W=52;
+`else
 parameter SIG_W=23;
 parameter EXP_W=8;
+`endif
 
 logic done,strobe;
 logic [7:0] status;
