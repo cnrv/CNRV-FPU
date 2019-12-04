@@ -18,3 +18,15 @@ verilator -f ../tb/f_tf_fmac.f
 makeV tb_fp_mac
 source ../SCR/tf_mac.sh
 
+verilator -f ../tb/f_tf_roundToInt.f
+makeV tb_roundToInt
+source ../SCR/tf_roundToInt.sh
+
+verilator -f ../tb/f_tf_floatToInt.f
+makeV tb_floatToInt
+source ../SCR/tf_floatToInt.sh
+
+verilator -f ../tb/f_tf_intToFloat.f
+makeV tb_intToFloat
+source ../SCR/tf_intToFloat.sh
+

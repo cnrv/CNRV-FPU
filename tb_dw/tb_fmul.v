@@ -18,7 +18,7 @@ module R5FP_mul_wrap #(
 	output [EXP_W+SIG_W:0] z);
 
 wire [EXP_W+SIG_W+1:0] ax, bx, zx;
-wire [EXP_W:0] zExp;
+wire [EXP_W:0] zExp, tailZeroCnt;
 wire [6-1:0] zStatusMiddle;
 wire [SIG_W*2+2:0] zSig;
 wire zSign;
@@ -34,7 +34,10 @@ R5FP_mul #(
 	.SIG_W(SIG_W),
 	.EXP_W(EXP_W+1)) mul (
 	.a(ax), .b(bx),
-	.zExp(zExp), .zStatus(zStatusMiddle),
+/* verilator lint_off PINCONNECTEMPTY */
+	.toInf(),
+/* verilator lint_on PINCONNECTEMPTY */
+	.zExp(zExp), .tailZeroCnt(tailZeroCnt), .zStatus(zStatusMiddle),
 	.zSig(zSig), .zSign(zSign));
 
 R5FP_postproc #(
@@ -42,13 +45,13 @@ R5FP_postproc #(
 	.SIG_W(SIG_W),
 	.EXP_W(EXP_W+1)) pp (
 	.aExp(zExp),
+	.tailZeroCnt(tailZeroCnt),
 	.aStatus(zStatusMiddle),
 	.aSig(zSig),
 	.aSign(zSign),
 	.rnd(rnd),
-/* verilator lint_off PINCONNECTEMPTY */
-	.specialZRnd(),
-/* verilator lint_on PINCONNECTEMPTY */
+	.zToInf(1'b0),
+	.specialTiny(1'b0),
 	.z(zx),
 	.zStatus(zStatus));
 

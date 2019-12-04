@@ -1,6 +1,6 @@
 
 #include <verilated.h>
-#include "Vtb_fsqrt.h"
-#define TYPE Vtb_fsqrt
+#include "Vtb_intToFloat.h"
+#define TYPE Vtb_intToFloat
 #include "../tb/sim_main.hpp"
 

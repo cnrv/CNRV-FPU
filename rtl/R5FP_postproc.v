@@ -2,28 +2,28 @@
 `include "R5FP_inc.vh"
 
 `define DEBUG $display
-`define FUNC_POSTPROC func_postproc
 
 
 module R5FP_postproc_prepare #(
 		parameter I_SIG_W=27,
 		parameter SIG_W=23,
 		parameter EXP_W=9) (
+/* verilator lint_off UNUSED */
+		input [I_SIG_W-1:0] aSig,
+/* verilator lint_on UNUSED */
 		input [EXP_W-1:0] tailZeroCnt,
-		output [I_SIG_W:0] mask, maskB);
+		output reg sticky, round_bit, guard_bit);
 
-reg [I_SIG_W+SIG_W:0] tmpMask,tmpMaskB;
+reg signed [I_SIG_W:0] aSig2;
+reg [I_SIG_W+SIG_W:0] aSig3, aSig3Tail;
 always @(*) begin
-	tmpMask=0;
-	tmpMask[I_SIG_W-3:0]={(I_SIG_W-2){1'b1}};
-	tmpMask<<=tailZeroCnt;
-	tmpMaskB=0;
-	tmpMaskB[I_SIG_W-2]=1'b1;
-	tmpMaskB<<=tailZeroCnt;
-/* verilator lint_off WIDTH */
-	mask=tmpMask>>SIG_W;
-	maskB=tmpMaskB>>SIG_W;
-/* verilator lint_on WIDTH */
+	aSig2 = {2'b01,aSig[I_SIG_W-3:0],1'b0};
+	aSig3 = { {SIG_W{1'b0}}, aSig2 } << SIG_W;
+	aSig3Tail=aSig3>>tailZeroCnt;
+	sticky = (|aSig3Tail[I_SIG_W-1-1-1:0]);
+	round_bit = aSig3Tail[I_SIG_W-1-1];
+	guard_bit = aSig3Tail[I_SIG_W-1];
+	//$display("aSig3Tail %b sticky %b round_bit %b guard_bit %b", aSig3Tail[I_SIG_W-1:0],sticky,round_bit,guard_bit);
 end
 
 endmodule
@@ -36,15 +36,15 @@ module R5FP_postproc_core #(
 /* verilator lint_off UNUSED */
 		input [6-1:0] aStatus,
 		input [I_SIG_W-1:0] aSig,
-		input [I_SIG_W:0] mask,maskB,
 /* verilator lint_on UNUSED */
+		input sticky_in, round_bit, guard_bit,
 		input  [2:0] rnd,
 		input aSign, specialTiny, zToInf,
 		input [EXP_W-1:0] tailZeroCnt,
 		output reg [SIG_W+EXP_W:0] z,
 		output reg [7:0] zStatus);
 
-reg sticky, round_bit, guard_bit;
+reg sticky;
 reg useMinValue;
 /* verilator lint_off UNUSED */
 wire specialRnd=specialTiny&&(aSig[I_SIG_W-SIG_W-2:I_SIG_W-SIG_W-3]==2'b10);
@@ -128,18 +128,11 @@ always @(*) begin
 		end
 	end
 	else begin
-		sticky = zStatus[`Z_INEXACT];
+		sticky = sticky_in || zStatus[`Z_INEXACT];
 		aExpExt = {3'b0,aExp}; //$unsigned(aExp);
 		
 		aSig3 = { {SIG_W{1'b0}}, aSig2 } << SIG_W;
 		
-		//aSig3Tail=aSig3>>tailZeroCnt;
-		//sticky = (|aSig3Tail[I_SIG_W-1-1-1:0]) || sticky;
-		//round_bit = aSig3Tail[I_SIG_W-1-1];
-		//guard_bit = aSig3Tail[I_SIG_W-1];
-		sticky = (|(aSig2&mask)) || sticky;
-		round_bit = |(aSig2&maskB);
-		guard_bit = |(aSig2&(maskB<<1));
 		//`DEBUG("Here5 aExp:%b aSig:%b aSig2:%b aSig3:%b tailZeroCnt:%d aSig3Tail:%b sticky:%b aSig3Tail[I_SIG_W-1-1-1:0]:%b guard_bit:%b round_bit:%b aStatus:%b zStatus:%b", aExp, aSig,aSig2,aSig3,tailZeroCnt,aSig3Tail, sticky, aSig3Tail[I_SIG_W-1-1-1:0],guard_bit,round_bit,aStatus,zStatus);
 		
 		roundCarry = getRoundCarry(rnd, aSign, guard_bit, round_bit, sticky);
@@ -147,7 +140,7 @@ always @(*) begin
 		rnd_bits = rnd_bits<<(I_SIG_W-1);
 		rnd_bits = rnd_bits<<tailZeroCnt;
 		if(!roundCarry) rnd_bits=0;
-		//`DEBUG("Here5 %d aSig3:%b rnd_bits:%b",$time,aSig3,rnd_bits);
+		//`DEBUG("Here5 %d aSig3:%b rnd_bits:%b sticky:%b",$time,aSig3,rnd_bits,sticky);
 		aSig4 = aSig3+rnd_bits;
 		//`DEBUG("Here5 aSig4:%b aSig4[I_SIG_W+SIG_W-1:I_SIG_W-1]:%b",aSig4,aSig4[I_SIG_W+SIG_W-1:I_SIG_W-1]);
 
@@ -281,32 +274,23 @@ module R5FP_postproc #(
 	output reg [SIG_W+EXP_W:0] z,
 	output reg [7:0] zStatus);
 
-//reg [EXP_W-1:0] tailZeroCnt0;
-//always @(*) begin
-//	tailZeroCnt0=0;
-//	if(aExp>=`EXP_DENORMAL_MIN(EXP_W-1,SIG_W) && aExp<=`EXP_DENORMAL_MAX(EXP_W-1)) begin
-//		tailZeroCnt0=1+(`EXP_DENORMAL_MAX(EXP_W-1)-aExp);
-//	end
-//end
-
-wire [I_SIG_W:0] mask, maskB;
+wire sticky, round_bit, guard_bit;
 R5FP_postproc_prepare #(
 		.I_SIG_W(I_SIG_W),
 		.SIG_W(SIG_W),
 		.EXP_W(EXP_W)) prepare (
 		.tailZeroCnt(tailZeroCnt),
-		.mask(mask),
-		.maskB(maskB));
+		.aSig(aSig),
+		.sticky(sticky), .round_bit(round_bit), .guard_bit(guard_bit));
 
 R5FP_postproc_core #(
 		.I_SIG_W(I_SIG_W),
 		.SIG_W(SIG_W),
 		.EXP_W(EXP_W)) core (
+	.sticky_in(sticky), .round_bit(round_bit), .guard_bit(guard_bit),
 	.aExp(aExp),
 	.aStatus(aStatus),
 	.aSig(aSig),
-	.mask(mask),
-	.maskB(maskB),
 	.rnd(rnd),
 	.aSign(aSign),
 	.specialTiny(specialTiny), 
@@ -318,4 +302,3 @@ R5FP_postproc_core #(
 endmodule
 
 `undef DEBUG
-`undef FUNC_POSTPROC
